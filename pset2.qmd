@@ -1,0 +1,853 @@
+---
+title: "Problem Set 2"
+author: "Hailun Liu"
+date: "2024-10-18"
+format:
+  html:
+    code-fold: true
+execute:
+  eval: true
+  echo: true
+---
+
+```{python}
+
+```
+
+1. **PS2:** Due Sat Oct 5 at 5:00PM Central. Worth 50 points. 
+
+We use (`*`) to indicate a problem that we think might be time consuming. 
+
+Steps to submit (5 points on PS1)
+
+1. "This submission is my work alone and complies with the 30538 integrity
+policy." Add your initials to indicate your agreement: ** HL **
+2. "I have uploaded the names of anyone I worked with on the problem set **[here](https://docs.google.com/forms/d/1-zzHx762odGlpVWtgdIC55vqF-j3gqdAp6Pno1rIGK0/edit)**"  ** HL ** (1 point)
+3. Late coins used this pset: ** HL ** Late coins left after submission: ** 3 **
+4. Knit your `ps2.qmd` 
+    * The PDF should not be more than 25 pages. Use `head()` and re-size figures when appropriate. 
+6. Submit to Gradescope (4 points) 
+7. Tag your submission in Gradescope
+
+# Q1 Data cleaning continued (15 points)
+
+
+
+
+## (1)
+
+```{python}
+import pandas as pd
+
+df = pd.read_csv("parking_tickets_one_percent.csv")
+df.head() 
+
+
+def count_na(df):
+    na_counts = df.isna().sum()
+    result = pd.DataFrame({
+        'Variable': na_counts.index,
+        'Num_NA': na_counts.values
+    })
+    
+    return result
+
+na_report = count_na(df)
+print(na_report)
+
+```
+
+
+
+## (2) 
+We find that zipcode,notice_level and hearing_disposition are missing much more frequently than other vairables.
+
+
+zipcode often remains blank when the vehicle registration information is incomplete or when out-of-state or temporary license plates are involved. In some cases, the city may not collect or accurately capture the address data required for associating a ZIP code with the ticket.
+
+notice_level  tends to be missing when a notice was not required or not issued—for example, for tickets that were promptly paid, dismissed, or still pending without escalation to a higher notice level.
+
+hearing_disposition indicates the outcome of a contested ticket. Many tickets are not contested, and hence no hearing occurs, leaving this field empty. Even when hearings are requested, delays or data entry inconsistencies can lead to missing outcomes in the dataset.
+
+
+
+
+## (3)
+old vialation code:'0964125' '0976170'
+new violation code:'0964125B''0964125C'
+```{python}
+df1 = df[df['violation_description'].str.contains('NO CITY STICKER', case=False, na=False)][
+    ['violation_description', 'fine_level1_amount', 'violation_code']
+]
+print(df1)
+
+unique_violation_codes = df1[df1['fine_level1_amount'] == 120]['violation_code'].unique()
+print(unique_violation_codes)
+
+unique_violation_codes_200 = df1[df1['fine_level1_amount'] == 200]['violation_code'].unique()
+print(unique_violation_codes_200)
+
+```
+
+
+```{python}
+unique_violation_codes_200 = df1[
+    (df1['fine_level1_amount'] == 200) | (df1['fine_level1_amount'] == 500)
+]['violation_code'].unique()
+print(unique_violation_codes_200)
+```
+
+
+## (4)
+the cost of an initial offense under each code has presented inside the bar chart:
+
+```{python}
+df2 = df.groupby('violation_description', as_index=False)['fine_level1_amount'].min()
+print(df2)
+
+```
+
+```{python}
+import altair as alt
+df2_filtered = df2[df2['violation_description'] != 'NO CITY STICKER VEHICLE OVER 16,000 LBS.']
+
+chart1 = alt.Chart(df2_filtered).mark_bar(color='#FFA500').encode(
+    alt.X('violation_description:N', sort='-y'), 
+    alt.Y('fine_level1_amount:Q')
+)
+chart1.show()
+```
+
+
+
+# Q2 Revenue increase from “missing city sticker” tickets (35 Points)
+
+
+```{python}
+import pandas as pd
+df = pd.read_csv("parking_tickets_one_percent.csv")
+df.head() 
+
+```
+
+
+
+## 1.  
+
+create a new value for violation codes which combines the two codes :0966666A
+```{python}
+dfd = df.replace(
+    {'violation_code': ['0964125', '0976170', '0964125B', '0964125C']}, 
+    '0966666A'
+)
+print(dfd)
+
+```
+
+
+```{python}
+
+violation_type = df['violation_description'].unique()
+print(violation_type)
+```
+
+
+```{python}
+df4 = dfd[dfd['violation_code'] == '0966666A'][['violation_code', 'issue_date']].copy()
+
+
+
+df4['issue_date'] = pd.to_datetime(df4['issue_date'], errors='coerce').dt.to_period('M').astype(str)
+
+print(df4)
+
+date_counts1 = df4['issue_date'].value_counts().reset_index()
+date_counts1.columns = ['issue_date', 'count']
+print(date_counts1)
+
+```
+## 2. 
+And l plot the number of tickets over time twice(one for line chart and one for heatmap....)
+```{python}
+chart2 = alt.Chart(date_counts1).mark_line().encode(
+    x='issue_date:T',
+    y='count:Q',
+    tooltip=['issue_date:T', 'count:Q']
+).properties(
+    title='Number of Tickets Over Time'
+)
+
+chart2.show()
+```
+
+```{python}
+import altair as alt
+date_counts1['issue_date'] = pd.to_datetime(date_counts1['issue_date'])
+
+
+chart3 = alt.Chart(date_counts1, title="The Number of Tickets Over Time").mark_rect().encode(
+    alt.X('year(issue_date):O', title="Year"),  
+    alt.Y('month(issue_date):O', title="Month"),  
+    alt.Color('count:Q', title="Ticket Count"),  
+    tooltip=[
+        alt.Tooltip('issue_date:T', title="Date"),
+        alt.Tooltip('count:Q', title="Ticket Count")
+    ]
+).configure_view(
+    step=13,
+    strokeWidth=0
+).configure_axis(
+    domain=False
+)
+
+chart3.show()
+
+```
+
+
+
+
+the help page l used is https://altair-viz.github.io/gallery/table_bubble_plot_github.html,which covered Altair’s date labeling features.
+the basic syntics will be like:
+x='hours(time):O',
+y='day(time):O', 
+The expected month that the price will increase is  July.
+
+
+
+
+## 3.  
+Since the  the increase happens in the middle of a year(feb.2012).
+We would estimate the ticket counts from 2011 to 2012
+
+
+```{python}
+df = df[df['violation_description'].str.contains('STICKER', case=False, na=False)]
+
+df5 = df[['violation_description', 'issue_date','ticket_queue']]
+df5['issue_date'] = pd.to_datetime(df5['issue_date'], errors='coerce')
+start_date = pd.to_datetime('2011-01-01 00:00:00')
+end_date = pd.to_datetime('2012-01-01 00:00:00')
+
+df5_filtered = df5[
+    (df5['issue_date'] >= start_date) & 
+    (df5['issue_date'] <= end_date) & 
+    (df5['violation_description'].notna())
+]
+
+num_rows = len(df5_filtered)
+print(f"the number of ticket in one year are {num_rows} ")
+```
+
+As l use the data from 2011 to 2012 to estimate the ticket numbers.
+the number of ticket in one year are 1935.
+We know that the price increase from 120 to 200. Then the revenue will be
+
+(200-120) mutiply 1935=154800
+
+153750 multiply 100=15,480,000
+
+which is actually similar to $16 million(16,000,000)
+
+## 4.
+First l will compute the payment rates before and after the policy.
+
+```{python}
+import pandas as pd
+df = pd.read_csv("parking_tickets_one_percent.csv")
+
+df = df[df['violation_description'].str.contains('STICKER', case=False, na=False)]
+
+df6 = df[['violation_description', 'issue_date','ticket_queue']]
+df6['issue_date'] = pd.to_datetime(df5['issue_date'], errors='coerce')
+start_date = pd.to_datetime('2012-01-01 00:00:00')
+end_date = pd.to_datetime('2013-01-01 00:00:00')
+
+df6_filtered = df6[
+    (df6['issue_date'] >= start_date) & 
+    (df6['issue_date'] <= end_date) & 
+    (df6['violation_description'].notna())
+]
+
+num_rows = len(df6_filtered)
+print(f"the number of ticket in one year are {num_rows} ")
+
+
+df5_paid = df5_filtered[df5_filtered['ticket_queue'] == 'Paid']
+df6_paid = df6_filtered[df6_filtered['ticket_queue'] == 'Paid']
+
+num_paid1 = len(df5_paid)
+num_paid2 = len(df6_paid)
+
+```
+
+
+
+
+```{python}
+num_rows1 = len(df6_filtered)
+print(f"the number of ticket after the policy are {num_rows1} ")
+
+print(f"the number of tickets have been paid before the policy is: {num_paid1}")
+
+print(f"the number of tickets have been paid after the policy is: {num_paid2}")
+```
+
+The payment rates before the policy is :1044/1935=53.953%
+
+The payment rates after the policy is :1109/2271=48.854%
+after the price increase went into effect,The payment rates decreased from 53.953% to 48.854%
+
+we use old number of tickets issued * new payment rates=1935 * 48.854%=945.3249
+
+totoal revenue:945.3249*(200-120)*100=7,562,599
+
+the change in revenue would be:7,562,599-15,480,000=-7,917,401
+
+Using the new repayment rates in the year after the price increase occurred, what would the change in revenue have been decreased 7,917,401
+
+
+## 5.
+```{python}
+import pandas as pd
+df = pd.read_csv("parking_tickets_one_percent.csv")
+df = df[df['violation_description'].str.contains('STICKER', case=False, na=False)]
+df7 = df[['violation_description', 'issue_date','ticket_queue']]
+```
+```{python}
+df7['issue_date'] = pd.to_datetime(df7['issue_date'], errors='coerce')
+monthly_counts = (
+    df7.groupby(df7['issue_date'].dt.to_period('M')).size().reset_index(name='ticket_issued_by_month')
+)
+monthly_counts['issue_date'] = monthly_counts['issue_date'].astype(str)
+df7['year_month'] = df7['issue_date'].dt.to_period('M').astype(str)
+df7 = df7.merge(monthly_counts, left_on='year_month', right_on='issue_date', how='left')
+df7.drop(columns=['year_month'], inplace=True)
+print(df7)
+
+```
+```{python}
+df7['issue_date_y'] = pd.to_datetime(df7['issue_date_y'], errors='coerce')
+df7_paid = df7[df7['ticket_queue'] == 'Paid']
+monthly_paid = (
+    df7_paid.groupby(df7_paid['issue_date_y'].dt.to_period('M')).size().reset_index(name='ticket_issued_by_month')
+)
+```
+
+```{python}
+monthly_counts['issue_date'] = pd.to_datetime(monthly_counts['issue_date'], errors='coerce').dt.to_period('M')
+```
+
+```{python}
+monthly_paid.rename(columns={'issue_date_y': 'issue_date'}, inplace=True)
+```
+
+```{python}
+merged_data = pd.merge(monthly_paid, monthly_counts, on='issue_date', how='inner')
+
+```
+
+```{python}
+merged_data['rate'] = merged_data['ticket_issued_by_month_x'] / merged_data['ticket_issued_by_month_y']
+```
+
+```{python}
+import pandas as pd
+import altair as alt
+
+merged_data['issue_date'] = merged_data['issue_date'].astype(str) 
+chart = alt.Chart(merged_data).mark_line().encode(
+    alt.X('issue_date:O', title='Month'),
+    alt.Y('rate:Q', title='Rate'),
+    alt.Tooltip(['country:N', 'rate:Q', 'issue_date:T']) 
+).properties(
+    width=400,
+    height=300  
+)
+
+chart
+
+
+
+
+
+```
+
+
+
+## 6.  
+
+l plot the counts of tickets and the counts of paid tickets over time with regarding to different violaton descriptions. While the result will be difficult to read.
+```{python}
+
+import pandas as pd
+df = pd.read_csv("parking_tickets_one_percent.csv")
+
+df7 = df[['violation_description', 'issue_date','ticket_queue']]
+
+df7['issue_year'] = pd.to_datetime(df['issue_date']).dt.year
+```
+
+
+```{python}
+
+df7['is_paid'] = (df7['ticket_queue'] == 'Paid').astype(int) 
+
+summary_df = df7.groupby(['violation_description', 'issue_year']).agg(
+    total_tickets=('issue_year', 'count'),  
+    total_paid=('is_paid', 'sum')  
+).reset_index()
+
+summary_df['repayment_rate'] = summary_df['total_paid'] / summary_df['total_tickets']
+```
+
+
+
+
+```{python}
+import altair as alt
+filtered_df = summary_df[summary_df['total_paid'] > 500]
+
+```
+
+
+
+
+approach
+```{python}
+import pandas as pd
+df = pd.read_csv("parking_tickets_one_percent.csv")
+
+df8 = df[['violation_description', 'issue_date','ticket_queue']]
+df8['is_paid'] = (df8['ticket_queue'] == 'Paid').astype(int)
+```
+
+
+
+```{python}
+summary = df8.groupby(['violation_description']).agg(
+    total_tickets=('violation_description', 'count'),  
+    total_paid=('is_paid', 'sum')  
+).reset_index()
+
+summary['repayment_rate'] = summary['total_paid'] / summary['total_tickets']
+
+```
+
+```{python}
+import altair as alt
+
+
+summary = summary[summary['total_paid'] > 5000]
+
+
+bar_tickets = alt.Chart(summary).mark_bar(opacity=0.6).encode(
+    alt.X('violation_description:N', sort='-y', title='Violation Description'),
+    alt.Y('total_tickets:Q', title='Count'),
+    alt.Color('violation_description:N', legend=None)
+)
+
+bar_paid = alt.Chart(summary).mark_bar(opacity=0.6, color='green').encode(
+    alt.X('violation_description:N', sort='-y'),
+    alt.Y('total_paid:Q')
+)
+
+
+chart = (bar_tickets + bar_paid).properties(
+    width=400,
+    title="counts of Total Tickets and counts Total Paid"
+)
+
+chart
+```
+
+The green bar represents the counts of the paid tickets while each bar represent the counts of the tickets.
+
+three violation types would you as an analyst have recommended they increase the price of : 
+1.EXPIRED PLATES OR TEMPORARY REGISTRATION
+2.STEER CLEANING
+3.RESIDENTIAL PERMIT PARKING
+
+As we know that Police cannot control people's violation rate.So violation rate isnan objective thing. But police can increase the violaion price positively then make the revenue increase.
+
+# Q3 Headlines and sub-messages (20 points)
+
+
+
+## 1.
+```{python}
+import pandas as pd
+df = pd.read_csv("parking_tickets_one_percent.csv")
+
+df9 = df[['violation_description', 'ticket_queue','fine_level1_amount']]
+df9['is_paid'] = (df9['ticket_queue'] == 'Paid').astype(int)
+
+```
+
+
+```{python}
+summary1 = df9.groupby(['violation_description']).agg(
+    total_tickets=('violation_description', 'count'),  
+    total_paid=('is_paid', 'sum'),  
+    fine_level1_amount=('fine_level1_amount', 'mean') 
+).reset_index()
+
+
+summary1['repayment_rate'] = summary1['total_paid'] / summary1['total_tickets']
+
+summary1 = summary1.sort_values(by='total_tickets', ascending=False)
+
+```
+
+
+
+```{python}
+dfff = summary1[['violation_description', 'repayment_rate', 'fine_level1_amount']]
+top_5_violations = dfff.head(5)
+
+top_5_violations
+
+
+print(top_5_violations)
+```
+
+the 5 most common violation descriptions:
+EXPIRED PLATES OR TEMPORARY TRGISTRATION
+STEERING CLEANING
+RESIDENTIAL PERMIT PARKING
+EXP.METER NON-CENTRAL BUSINESS DISTRICT
+PARKING/STANDING PROHIBITED ANYTIME
+
+## 2.
+```{python}
+summary2 = summary1[summary1['total_tickets'] > 100]
+
+```
+
+scatter plot1:  shows the relationship between fine amount and the fraction of tickets that are paid
+
+the headlines:'Repayment Rates Drop as Fine Amounts Increase'
+```{python}
+import altair as alt
+
+chart = alt.Chart(summary2).mark_circle().encode(
+    alt.X('repayment_rate:Q', title='Repayment Rate (%)'),
+    alt.Y('fine_level1_amount:Q', title='Average Fine Level 1 ($)'),
+    alt.Size('total_tickets:Q', title='Total Tickets Issued'),
+    tooltip=['violation_description', 'total_tickets', 'repayment_rate']
+).properties(
+    title='Repayment Rates Drop as Fine Amounts Increase'  
+)
+
+
+chart
+
+```
+
+annotations:Cities with higher traffic congestion report more unpaid tickets for speeding violations
+
+
+plot2:
+ ```{python}
+import altair as alt
+
+alt.Chart(summary2).mark_bar().encode(
+    alt.X('repayment_rate:Q', bin=alt.BinParams(maxbins=20), title='Repayment Rate (%)(binned)'),
+    alt.Y('fine_level1_amount:Q', bin=alt.BinParams(maxbins=20), title='Average Fine Level 1 ($)(binned)'),
+    alt.Color('total_tickets:Q', title='Total Tickets Issued'),
+    tooltip=['violation_description', 'total_tickets', 'repayment_rate']
+).properties(
+    title='Repayment Rates Drop as Fine Amounts Increase'  
+)
+
+
+```
+
+
+
+annotations:Cities with higher traffic congestion report more unpaid tickets for speeding violations
+plot3:
+
+```{python}
+import altair as alt
+
+
+alt.Chart(summary2).mark_boxplot().encode(
+    x=alt.X('repayment_rate:Q', title='Repayment Rate (%)'),
+    y=alt.Y('fine_level1_amount:Q', title='Average Fine Level 1 ($)'),
+    tooltip=['violation_description', 'total_tickets', 'repayment_rate']
+).properties(
+    title='Repayment Rates Drop as Fine Amounts Increase'
+)
+
+
+
+```
+
+
+annotations:Cities with higher traffic congestion report more unpaid tickets for speeding violations
+
+## 3. 
+ I recommend bringing a scatter plot with repayment rate on the x-axis, fine amount on the y-axis, and point size proportional to total tickets issued. And each point represents a type of violation, making it clear how fines and repayment rates relate to each other.And the scatter plot directly visualizes the possible inverse relationship between fine size and repayment rates.
+
+
+
+
+
+# Q4 Understanding the structure of the data and summarizing it (Lecture 5, 20 Points)
+
+```{python}
+import pandas as pd
+import altair as alt
+
+
+```
+
+
+## 1.
+
+```{python}
+import pandas as pd
+import altair as alt
+
+df = pd.read_csv("parking_tickets_one_percent.csv")
+
+df10 = df[['violation_description','fine_level1_amount','fine_level2_amount']]
+df10['delay_ticket_increase'] = df10['fine_level2_amount'] - df10['fine_level1_amount']
+
+
+summary3 = df10.groupby('violation_description').agg(
+    total_tickets=('violation_description', 'count'),
+    min_delay_ticket_increase=('delay_ticket_increase', 'min'),  
+    min_fine_level1_amount=('fine_level1_amount', 'min')  
+).reset_index()
+print(summary3)
+
+summary4 = summary3[summary3['total_tickets'] >= 100]
+print(summary4)
+```
+
+
+```{python}
+mismatch_rows = summary4[summary4['min_delay_ticket_increase'] != summary4['min_fine_level1_amount']]
+print(mismatch_rows)
+```
+
+Not All the violation types double in price if unpaid.
+For example:
+1.DISABLED PARKING ZONE,if unpaid,it will increase 50
+2.NO CITY STICKER VEHICLE OVER 16,000 LBS.will increase 275
+3.OBSTRUCTED OR IMPROPERLY TINTED WINDOWS,will not increase.
+4.PARK OR BLOCK ALLEY,will increase 100.
+5.SMOKED/TINTED WINDOWS PARKED/STANDING,will not increase.
+<table>
+  <thead>
+    <tr>
+      <th>Violation Description</th>
+      <th>Increase Amount ($)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>DISABLED PARKING ZONE</td>
+      <td>50</td>
+    </tr>
+    <tr>
+      <td>NO CITY STICKER VEHICLE OVER 16,000 LBS</td>
+      <td>275</td>
+    </tr>
+    <tr>
+      <td>OBSTRUCTED OR IMPROPERLY TINTED</td>
+      <td>10</td>
+    </tr>
+    <tr>
+      <td>PARK OR BLOCK ALLEY</td>
+      <td>100</td>
+    </tr>
+    <tr>
+      <td>SMOKED/TINTED WINDOWS PARKED/STANDING</td>
+      <td>0</td>
+    </tr>
+  </tbody>
+</table>
+
+## 3.
+
+
+```{python}
+import pandas as pd
+import altair as alt
+new = summary1.head(10)
+old = summary1.iloc[10:]
+
+file = pd.Series({
+    'total_tickets': old['total_tickets'].sum(),  
+    'total_paid': old['total_paid'].sum(),  # Sum 
+    'fine_level1_amount': (old['total_paid'] * old['fine_level1_amount']).sum() / old['total_paid'].sum()  
+})
+
+file['repayment_rate'] = file['total_paid'] / file['total_tickets']
+
+```
+
+
+```{python}
+
+new.loc[len(new)] = {
+    'index': 42,
+    'violation_description': 'OTHER',
+    'total_tickets': 78330,
+    'total_paid': 51049,
+    'fine_level1_amount': 77.91,
+    'repayment_rate': 0.6517170943444401
+}
+
+new=new.reset_index()
+
+```
+
+
+```{python}
+import altair as alt
+
+chart = alt.Chart(new).mark_circle().encode(
+    alt.X('repayment_rate:Q', title='Repayment Rate (%)'),
+    alt.Y('fine_level1_amount:Q', title='Average Fine Level 1 ($)'),
+    alt.Size('total_tickets:Q', title='Total Tickets Issued'),
+    tooltip=['violation_description', 'total_tickets', 'repayment_rate']
+).properties(
+    title='Repayment Rates Drop as Fine Amounts Increase'  
+)
+
+
+text = alt.Chart(new).mark_text(align='left', dx=7, dy=-2, size=5).encode(
+    alt.X('repayment_rate:Q'),
+    alt.Y('fine_level1_amount:Q'),
+    text='violation_description'
+)
+
+final_chart = chart + text
+final_chart
+
+```
+
+annotations
+
+
+```{python}
+import pandas as pd
+
+
+def get_type(description):
+    if 'PARKING' in description or 'OVERSTAY' in description:
+        return 'PARKING'
+    elif 'STICKER' in description:
+        return 'STICKER'
+    elif 'PLATES' in description or 'PLATE' in description:
+        return 'PLATE'
+    else:
+        return description 
+new['type'] = new['violation_description'].apply(get_type)
+
+
+```
+
+
+
+```{python}
+   
+chart11 = alt.Chart(new).mark_circle().encode(
+    alt.X('repayment_rate:Q', title='Repayment Rate (%)'),
+    alt.Y('fine_level1_amount:Q', title='Average Fine Level 1 ($)'),
+    alt.Size('total_tickets:Q', title='Total Tickets Issued'),
+    color='type:N',  
+    tooltip=['violation_description', 'total_tickets', 'repayment_rate', 'type']
+).properties(
+    title='Repayment Rates Drop as Fine Amounts Increase'
+)
+
+
+
+text = alt.Chart(new).mark_text(align='left', dx=7, dy=-2, size=4).encode(
+    alt.X('repayment_rate:Q'),
+    alt.Y('fine_level1_amount:Q'),
+    text='violation_description'
+)
+
+final_chart = chart11 + text
+final_chart
+```
+
+annotations
+
+The  meaningful categories that l construct:If ‘violation_description’ contains ‘PARKING’ or ‘OVERSTAY’, type is ‘PARKING’; if ‘violation_description’ contains ‘STICKER’, type is ‘STICKER’; if ‘violation_description’ contains ‘PLATES’ or ‘PLATE’, type is ‘PLATE’; others are consistent with ‘violation_description’
+
+
+# Extra Credit (max 5 points)
+
+## 1. 
+```{python}
+
+import pandas as pd
+df = pd.read_csv("parking_tickets_one_percent.csv")
+
+
+dd = df[['violation_description', 'violation_code']]
+```
+
+
+```{python}
+ddd = dd.groupby(['violation_description', 'violation_code']).size().reset_index(name='counts')
+
+
+```
+
+code'0964040B' '0964041B''0964050J' '0964070' '0964170D' '0964200B' '0976160A' '0976160B' '0980110B' are associated with multiple violation descriptions.
+
+
+
+
+
+ ```{python}
+violation_codes = [
+    '0964040B', '0964041B', '0964050J', '0964070', '0964170D', 
+    '0964200B', '0976160A', '0976160B', '0980110B'
+]
+
+
+data0 = ddd[ddd['violation_code'].isin(violation_codes)]
+result = data0.groupby(['violation_code', 'violation_description']).agg(
+    counts=('counts', 'max')
+).reset_index()
+
+print(result)
+
+```
+
+a new column which records the most common violation description can be found in the table
+
+
+
+```{python}
+result0 = result.groupby('violation_code').agg(
+    counts=('counts', 'sum')
+).reset_index()
+
+
+result0 = result0.sort_values(by='counts', ascending=False)
+
+print(result0)
+```
+
+Three codes with the most observations:
+0964040B
+0976160A
+0976160B
+
+
+
+
+## 2.
+
+
+
